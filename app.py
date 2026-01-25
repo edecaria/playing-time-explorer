@@ -76,7 +76,7 @@ def load_data():
         df = pd.read_csv(path)
 
     else:
-        data_url = os.getenv("DATA_URL")  # set this in your deployment environment
+        data_url = st.secrets.get("AppDataURL", None)  # set this in your deployment environment
         if data_url:
             df = pd.read_csv(data_url)
         else:
