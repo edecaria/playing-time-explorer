@@ -18,6 +18,9 @@ st.markdown(
       letter-spacing:0.04em;
       text-transform:uppercase;
     }
+    .block-container {
+        padding-top: 1rem;
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -26,33 +29,34 @@ st.markdown(
 # --- Define benchmarks
 
 TIERS = [
-    {"name": "EXCELLENT", "bg": "#dcfce7", "fg": "#166534"},
-    {"name": "GREAT",     "bg": "#e0f2fe", "fg": "#075985"},
-    {"name": "GOOD",      "bg": "#fef9c3", "fg": "#854d0e"},
-    {"name": "OKAY",      "bg": "#ffedd5", "fg": "#9a3412"},
-    {"name": "POOR",      "bg": "#fee2e2", "fg": "#991b1b"},
+    {"name": "ELITE", "bg": "#dcfce7", "fg": "#166534"},
+    {"name": "GREAT", "bg": "#e0f2fe", "fg": "#075985"},
+    {"name": "GOOD", "bg": "#fef9c3", "fg": "#854d0e"},
+    {"name": "OKAY", "bg": "#ffedd5", "fg": "#9a3412"},
+    {"name": "POOR", "bg": "#fee2e2", "fg": "#991b1b"},
 ]
 
 BENCHMARKS = {
     "AW": {
-        "thresholds": [27, 24, 19, 13],
+        "thresholds": [27, 24, 19, 14],
         "display_range": (1.0, 27.0)
     },
     "PAAW": {
-        "thresholds": [25.0, 22.0, 19.0, 16.0],
-        "display_range": (13.0, 28.0)
+        "thresholds": [24.0, 22.0, 18.0, 14.0],
+        "display_range": (1.0, 28.0)
     },
     "SAW": {
-        "thresholds": [5.6, 5.2, 4.8, 4.4],
+        "thresholds": [5.5, 4.9, 4.0, 3.0],
         "display_range": (2.0, 6.0)
     },
     "PAS": {
-        "thresholds": [4.5, 4.3, 4.1, 3.9],
+        "thresholds": [4.35, 4.20, 4.00, 3.80],
         "display_range": (3.5, 5.0)
     }}
 
 column_formats = {
     "Total PA": st.column_config.NumberColumn(format="%d"),
+    "Age": st.column_config.NumberColumn(format="%d"),
     "AW": st.column_config.NumberColumn(format="%d"),
     "PAAW": st.column_config.NumberColumn(format="%.1f"),
     "SAW": st.column_config.NumberColumn(format="%.1f"),
@@ -154,7 +158,7 @@ def tier_for(metric: str, value: float):
             return i
     return len(TIERS) - 1  # last tier (POOR)
 
-st.set_page_config(page_title="Playing Time Explorer", layout="wide")
+st.set_page_config(page_title="Playing Time Explorer", layout="wide", initial_sidebar_state="collapsed")
 st.title("Playing Time Explorer")
 
 # Guardrails
@@ -189,10 +193,14 @@ if st.session_state.jump_to_player:
     st.session_state.mode = "Player"
     st.session_state.jump_to_player = False
 
-mode = st.sidebar.radio(
+if "mode" not in st.session_state:
+    st.session_state.mode = mode_options[0]
+
+mode = st.segmented_control(
     "View mode",
     mode_options,
-    key="mode"
+    key="mode",
+    label_visibility="collapsed"
 )
 
 # Scroll to top after jump
@@ -209,7 +217,6 @@ if scroll_to_top:
     """, height=0)
 
 if mode == "League":
-    st.header("League Overview")
     season = st.selectbox(
         "Season",
         sorted(df["Year"].dropna().unique()),
@@ -219,11 +226,12 @@ if mode == "League":
     season_df = df[df["Year"] == season].copy()
 
     fig = px.scatter(
-    season_df,
-    x="AW",
-    y="PAAW",
-    hover_name="Name",
-    title=None,
+        season_df,
+        x="AW",
+        y="PAAW",
+        hover_name="Name",
+        custom_data=["Name"],
+        title=None,
     )
 
     # Light polish
@@ -233,7 +241,14 @@ if mode == "League":
         margin=dict(l=10, r=10, t=10, b=10),
     )
 
-    st.plotly_chart(fig)
+    chart_selection = st.plotly_chart(fig, on_select="rerun", selection_mode="points")
+
+    # Handle chart click - jump to Player view
+    if chart_selection and chart_selection.selection.points:
+        clicked_name = chart_selection.selection.points[0]["customdata"][0]
+        st.session_state.selected_player = clicked_name
+        st.session_state.jump_to_player = True
+        st.rerun()
 
     # --- Metric range filters (>= and <=) for AW, PAAW, SAW, PAS
     filter_metrics = [m for m in ["AW", "PAAW", "SAW", "PAS"] if m in season_df.columns and season_df[m].dropna().any()]
@@ -353,8 +368,6 @@ if mode == "League":
 
 
 if mode == "Player":
-    st.header("Player History")
-
     names = sorted(df["Name"].dropna().unique())
     # Use selected player from League view if available, otherwise default
     if st.session_state.selected_player and st.session_state.selected_player in names:
@@ -375,7 +388,7 @@ if mode == "Player":
     
     # --- Sparklines
 
-    st.subheader("Key metrics")
+    st.subheader(player)
 
     key_metrics = [m for m in ["AW", "PAAW", "SAW", "PAS"] if m in d.columns]
 
@@ -424,10 +437,10 @@ if mode == "Player":
     )
 
     with tab1:
-        cols = keep_existing(["Total PA", "AW", "PAAW", "SAW", "PAS", "EAW"], d)
+        cols = keep_existing(["Total PA", "Age", "AW", "PAAW", "SAW", "PAS", "EAW"], d)
         st.dataframe(d[["Year"] + cols], column_config=column_formats)
     with tab2:
-        cols = keep_existing(["GSvR_pct", "GSvL_pct", "vR", "vL", "#R", "#L"], d)
+        cols = keep_existing(["Age", "GSvR_pct", "GSvL_pct", "vR", "vL", "#R", "#L"], d)
         st.dataframe(d[["Year"] + cols], column_config=column_formats)
 #    with tab3:
 #        cols = keep_existing(["AB/AW", "H/AW", "R/AW", "HR/AW", "RBI/AW", "SB/AW"], d)
