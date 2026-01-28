@@ -222,9 +222,20 @@ if mode == "League":
         sorted(df["Year"].dropna().unique()),
         index=len(df["Year"].dropna().unique()) - 1  # default = latest year
     )
+    team = st.selectbox(
+        "Team",
+        ["All"] + sorted(df["Tm"].dropna().unique()),
+        index=0
+    )
+    pos = st.selectbox(
+        "Position",
+        ["All", "2", "3", "4", "5", "6", "o", "0"],
+        index=0
+    )
 
-    season_df = df[df["Year"] == season].copy()
 
+    season_df = df[(df["Year"] == season) & ((team == "All") |(df["Tm"] == team)) & ((pos == "All") | (df["Eligible"].str.contains(pos)))].copy()
+    
     fig = px.scatter(
         season_df,
         x="AW",
@@ -271,78 +282,85 @@ if mode == "League":
                 st.session_state[f"filter_{metric}"] = (lo, hi)
 
     if filter_metrics:
-        st.markdown("**Filter metrics (>= / <=):**")
-        # arrange two metrics per row
-        cols_per_row = 2
-        cols = st.columns(cols_per_row)
-        for i, m in enumerate(filter_metrics):
-            col = cols[i % cols_per_row]
-            with col:
-                col_min = float(season_df[m].min())
-                col_max = float(season_df[m].max())
-                is_int = pd.api.types.is_integer_dtype(season_df[m])
+        with st.expander("Filters", icon=":material/filter_list:"):
+            # arrange two metrics per row
+            cols_per_row = 2
+            cols = st.columns(cols_per_row)
+            for i, m in enumerate(filter_metrics):
+                col = cols[i % cols_per_row]
+                with col:
+                    col_min = float(season_df[m].min())
+                    col_max = float(season_df[m].max())
+                    is_int = pd.api.types.is_integer_dtype(season_df[m])
 
-                # Tier shortcut for AW - put tier and slider on same line
-                if m == "AW":
-                    tier_options = ["All"] + [t["name"] for t in TIERS]
-                    subcol1, subcol2 = st.columns([1, 2])
-                    with subcol1:
-                        st.selectbox(
-                            m,
-                            tier_options,
-                            key=f"tier_{m}",
-                            on_change=on_tier_select,
-                            args=(m, col_min, col_max, is_int)
-                        )
-                    with subcol2:
-                        min_v = int(col_min)
-                        max_v = int(col_max)
-                        val = st.slider(m, min_value=min_v, max_value=max_v, value=(min_v, max_v), step=1, key=f"filter_{m}", label_visibility="hidden")
-                        metric_ranges[m] = (val[0], val[1])
-                    continue
+                    # Initialize session state for this filter if not set
+                    if f"filter_{m}" not in st.session_state:
+                        if is_int:
+                            st.session_state[f"filter_{m}"] = (int(col_min), int(col_max))
+                        else:
+                            st.session_state[f"filter_{m}"] = (col_min, col_max)
 
-                # Tier shortcut for PAAW, SAW, PAS - put tier and slider on same line
-                if m in ["PAAW", "SAW", "PAS"]:
-                    tier_options = ["All"] + [t["name"] for t in TIERS]
-                    subcol1, subcol2 = st.columns([1, 2])
-                    with subcol1:
-                        st.selectbox(
-                            m,
-                            tier_options,
-                            key=f"tier_{m}",
-                            on_change=on_tier_select,
-                            args=(m, col_min, col_max, is_int)
-                        )
-                    with subcol2:
-                        step = (col_max - col_min) / 100 if col_max > col_min else 0.1
-                        if step == 0:
-                            step = 0.1
-                        val = st.slider(m, min_value=col_min, max_value=col_max, value=(col_min, col_max), step=step, format="%.2f", key=f"filter_{m}", label_visibility="hidden")
-                        metric_ranges[m] = (float(val[0]), float(val[1]))
-                    continue
+                    # Tier shortcut for AW - put tier and slider on same line
+                    if m == "AW":
+                        tier_options = ["All"] + [t["name"] for t in TIERS]
+                        subcol1, subcol2 = st.columns([1, 2])
+                        with subcol1:
+                            st.selectbox(
+                                m,
+                                tier_options,
+                                key=f"tier_{m}",
+                                on_change=on_tier_select,
+                                args=(m, col_min, col_max, is_int)
+                            )
+                        with subcol2:
+                            min_v = int(col_min)
+                            max_v = int(col_max)
+                            val = st.slider(m, min_value=min_v, max_value=max_v, step=1, key=f"filter_{m}", label_visibility="hidden")
+                            metric_ranges[m] = (val[0], val[1])
+                        continue
 
-                if is_int:
-                    step = 1
-                    min_v = int(col_min)
-                    max_v = int(col_max)
-                    val = st.slider(f"{m}", min_value=min_v, max_value=max_v, value=(min_v, max_v), step=step, key=f"filter_{m}")
-                    metric_ranges[m] = (val[0], val[1])
-                else:
-                    # float slider with reasonable step
-                    step = (col_max - col_min) / 100 if col_max > col_min else 0.1
-                    if step == 0:
-                        step = 0.1
-                    val = st.slider(f"{m}", min_value=col_min, max_value=col_max, value=(col_min, col_max), step=step, format="%.2f", key=f"filter_{m}")
-                    metric_ranges[m] = (float(val[0]), float(val[1]))
+                    # Tier shortcut for PAAW, SAW, PAS - put tier and slider on same line
+                    if m in ["PAAW", "SAW", "PAS"]:
+                        tier_options = ["All"] + [t["name"] for t in TIERS]
+                        subcol1, subcol2 = st.columns([1, 2])
+                        with subcol1:
+                            st.selectbox(
+                                m,
+                                tier_options,
+                                key=f"tier_{m}",
+                                on_change=on_tier_select,
+                                args=(m, col_min, col_max, is_int)
+                            )
+                        with subcol2:
+                            step = (col_max - col_min) / 100 if col_max > col_min else 0.1
+                            if step == 0:
+                                step = 0.1
+                            val = st.slider(m, min_value=col_min, max_value=col_max, step=0.1, format="%.1f", key=f"filter_{m}", label_visibility="hidden")
+                            metric_ranges[m] = (float(val[0]), float(val[1]))
+                        continue
 
-        # apply ranges
+                    # if is_int:
+                    #     step = 1
+                    #     min_v = int(col_min)
+                    #     max_v = int(col_max)
+                    #     val = st.slider(f"{m}", min_value=min_v, max_value=max_v, step=step, key=f"filter_{m}")
+                    #     metric_ranges[m] = (val[0], val[1])
+                    # else:
+                    #     # float slider with reasonable step
+                    #     step = (col_max - col_min) / 100 if col_max > col_min else 0.1
+                    #     if step == 0:
+                    #         step = 0.1
+                    #     val = st.slider(f"{m}", min_value=col_min, max_value=col_max, step=step, format="%.2f", key=f"filter_{m}")
+                    #     metric_ranges[m] = (float(val[0]), float(val[1]))
+
+        # apply ranges (outside expander so filtering still works when collapsed)
         for m, (lo, hi) in metric_ranges.items():
             season_df = season_df[season_df[m].notna()]
             season_df = season_df[(season_df[m] >= lo) & (season_df[m] <= hi)]
 
     st.subheader("Metrics by season")
     league_cols = keep_existing(
-        ["Year", "IDfg", "Name", "Age", "Hand", "Primary", "Eligible",
+        ["Year", "IDfg", "Name", "Age", "Hand", "Tm", "Primary", "Eligible",
          "Total PA", "AW", "PAAW", "SAW", "PAS", "EAW",
          "GSvR_pct", "GSvL_pct", "vR", "vL", "#R", "#L"],
         season_df
@@ -356,6 +374,7 @@ if mode == "League":
         on_select="rerun",
         selection_mode="single-row",
         column_config=column_formats,
+        hide_index=True,
     )
 
     # Handle row selection - jump to Player view
@@ -438,10 +457,10 @@ if mode == "Player":
 
     with tab1:
         cols = keep_existing(["Total PA", "Age", "AW", "PAAW", "SAW", "PAS", "EAW"], d)
-        st.dataframe(d[["Year"] + cols], column_config=column_formats)
+        st.dataframe(d[["Year"] + cols], column_config=column_formats, hide_index=True)
     with tab2:
         cols = keep_existing(["Age", "GSvR_pct", "GSvL_pct", "vR", "vL", "#R", "#L"], d)
-        st.dataframe(d[["Year"] + cols], column_config=column_formats)
+        st.dataframe(d[["Year"] + cols], column_config=column_formats, hide_index=True)
 #    with tab3:
 #        cols = keep_existing(["AB/AW", "H/AW", "R/AW", "HR/AW", "RBI/AW", "SB/AW"], d)
 #        st.dataframe(d[["Year"] + cols], column_config=column_formats)
