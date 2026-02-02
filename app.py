@@ -21,6 +21,9 @@ st.markdown(
     .block-container {
         padding-top: 1rem;
     }
+    h3 {
+        padding-bottom: 0 !important;
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -181,6 +184,18 @@ if "selected_player" not in st.session_state:
 if "jump_to_player" not in st.session_state:
     st.session_state.jump_to_player = False
 
+# Initialize filter session states (so they persist across tab switches)
+if "filter_season" not in st.session_state:
+    st.session_state.filter_season = sorted(df["Year"].dropna().unique())[-1]
+if "filter_team" not in st.session_state:
+    st.session_state.filter_team = "All"
+if "filter_team26" not in st.session_state:
+    st.session_state.filter_team26 = "All"
+if "filter_pos" not in st.session_state:
+    st.session_state.filter_pos = "All"
+if "filter_pos26" not in st.session_state:
+    st.session_state.filter_pos26 = "All"
+
 # Check query params for player navigation
 query_params = st.query_params
 if "player" in query_params:
@@ -222,11 +237,10 @@ if scroll_to_top:
     """, height=0)
 
 if mode == "League":
-    season = st.selectbox(
-        "Season",
-        sorted(df["Year"].dropna().unique()),
-        index=len(df["Year"].dropna().unique()) - 1  # default = latest year
-    )
+    years_list = sorted(df["Year"].dropna().unique())
+    season_idx = years_list.index(st.session_state.filter_season) if st.session_state.filter_season in years_list else len(years_list) - 1
+    season = st.selectbox("Season", years_list, index=season_idx)
+    st.session_state.filter_season = season
 
     # Get season-only filtered df for computing metric slider ranges
     season_only_df = df[df["Year"] == season]
@@ -251,41 +265,32 @@ if mode == "League":
             else:
                 st.session_state[f"filter_{metric}"] = (lo, hi)
 
-    # Initialize filter defaults
-    team = "All"
-    team26 = "All"
-    pos = "All"
-    pos26 = "All"
-
     with st.expander("Filters", icon=":material/filter_list:"):
         # Team filters
+        team_options = ["All"] + sorted(df["Tm"].dropna().unique())
+        team26_options = ["All"] + sorted(df["Team26"].dropna().unique())
+        pos_options = ["All", "2", "3", "4", "5", "6", "o", "0"]
+        pos26_options = ["All", "C", "1B", "2B", "3B", "SS", "OF", "UT"]
+
         team_col1, team_col2 = st.columns(2)
         with team_col1:
-            team = st.selectbox(
-                "Team",
-                ["All"] + sorted(df["Tm"].dropna().unique()),
-                index=0
-            )
+            team_idx = team_options.index(st.session_state.filter_team) if st.session_state.filter_team in team_options else 0
+            team = st.selectbox("Team", team_options, index=team_idx)
+            st.session_state.filter_team = team
         with team_col2:
-            team26 = st.selectbox(
-                "2026 Team",
-                ["All"] + sorted(df["Team26"].dropna().unique()),
-                index=0
-            )
+            team26_idx = team26_options.index(st.session_state.filter_team26) if st.session_state.filter_team26 in team26_options else 0
+            team26 = st.selectbox("2026 Team", team26_options, index=team26_idx)
+            st.session_state.filter_team26 = team26
         # Position filters
         pos_col1, pos_col2 = st.columns(2)
         with pos_col1:
-            pos = st.selectbox(
-                "Position",
-                ["All", "2", "3", "4", "5", "6", "o", "0"],
-                index=0
-            )
+            pos_idx = pos_options.index(st.session_state.filter_pos) if st.session_state.filter_pos in pos_options else 0
+            pos = st.selectbox("Position", pos_options, index=pos_idx)
+            st.session_state.filter_pos = pos
         with pos_col2:
-            pos26 = st.selectbox(
-                "2026 Position",
-                ["All", "C", "1B", "2B", "3B", "SS", "OF", "UT"],
-                index=0
-            )
+            pos26_idx = pos26_options.index(st.session_state.filter_pos26) if st.session_state.filter_pos26 in pos26_options else 0
+            pos26 = st.selectbox("2026 Position", pos26_options, index=pos26_idx)
+            st.session_state.filter_pos26 = pos26
         # Metric range filters
         if filter_metrics:
             cols_per_row = 2
@@ -319,7 +324,11 @@ if mode == "League":
                         with subcol2:
                             min_v = int(col_min)
                             max_v = int(col_max)
-                            val = st.slider(m, min_value=min_v, max_value=max_v, step=1, key=f"filter_{m}", label_visibility="hidden")
+                            current_val = st.session_state.get(f"filter_{m}", (min_v, max_v))
+                            # Clamp to valid range
+                            current_val = (max(min_v, int(current_val[0])), min(max_v, int(current_val[1])))
+                            val = st.slider(m, min_value=min_v, max_value=max_v, value=current_val, step=1, label_visibility="hidden")
+                            st.session_state[f"filter_{m}"] = val
                             metric_ranges[m] = (val[0], val[1])
                         continue
 
@@ -336,10 +345,12 @@ if mode == "League":
                                 args=(m, col_min, col_max, is_int)
                             )
                         with subcol2:
-                            step = (col_max - col_min) / 100 if col_max > col_min else 0.1
-                            if step == 0:
-                                step = 0.1
-                            val = st.slider(m, min_value=col_min, max_value=col_max, step=0.1, format="%.1f", key=f"filter_{m}", label_visibility="hidden")
+                            step = 0.1
+                            current_val = st.session_state.get(f"filter_{m}", (col_min, col_max))
+                            # Clamp to valid range
+                            current_val = (max(col_min, float(current_val[0])), min(col_max, float(current_val[1])))
+                            val = st.slider(m, min_value=col_min, max_value=col_max, value=current_val, step=step, format="%.1f", label_visibility="hidden")
+                            st.session_state[f"filter_{m}"] = val
                             metric_ranges[m] = (float(val[0]), float(val[1]))
                         continue
 
@@ -350,29 +361,56 @@ if mode == "League":
     for m, (lo, hi) in metric_ranges.items():
         season_df = season_df[season_df[m].notna()]
         season_df = season_df[(season_df[m] >= lo) & (season_df[m] <= hi)]
-    
-    fig = px.scatter(
-        season_df,
-        x="AW",
-        y="PAAW",
-        hover_name="Name",
-        custom_data=["Name"],
-        title=None,
-        color_discrete_sequence=["#27245C"],
-    )
 
-    # Light polish
-    fig.update_layout(
-        xaxis_title="Active Weeks (AW)",
-        yaxis_title="Plate Appearances per Active Week (PAAW)",
-        margin=dict(l=10, r=10, t=10, b=10),
-    )
+    st.caption(f"Players matching filters: {len(season_df)}")
 
-    chart_selection = st.plotly_chart(fig, on_select="rerun", selection_mode="points")
+    # Charts side by side
+    chart_col1, chart_col2 = st.columns(2)
+
+    with chart_col1:
+        st.markdown("<p style='margin-bottom: -5px;'><strong>Active Weeks vs. PA per Active Week</strong></p>", unsafe_allow_html=True)
+        fig1 = px.scatter(
+            season_df,
+            x="AW",
+            y="PAAW",
+            hover_name="Name",
+            custom_data=["Name"],
+            title=None,
+            color_discrete_sequence=["#27245C"],
+        )
+        fig1.update_layout(
+            xaxis_title="Active Weeks (AW)",
+            yaxis_title="Plate Appearances per Active Week (PAAW)",
+            margin=dict(l=10, r=10, t=10, b=10),
+        )
+        chart_selection1 = st.plotly_chart(fig1, on_select="rerun", selection_mode="points")
+
+    with chart_col2:
+        st.markdown("<p style='margin-bottom: -5px;'><strong>Team Games Started vs. RHP and LHP</strong></p>", unsafe_allow_html=True)
+        fig2 = px.scatter(
+            season_df,
+            x="GSvL_pct",
+            y="GSvR_pct",
+            hover_name="Name",
+            custom_data=["Name"],
+            title=None,
+            color_discrete_sequence=["#27245C"],
+        )
+        fig2.update_layout(
+            xaxis_title="%vL",
+            yaxis_title="%vR",
+            margin=dict(l=10, r=10, t=10, b=10),
+        )
+        chart_selection2 = st.plotly_chart(fig2, on_select="rerun", selection_mode="points")
 
     # Handle chart click - jump to Player view
-    if chart_selection and chart_selection.selection.points:
-        clicked_name = chart_selection.selection.points[0]["customdata"][0]
+    if chart_selection1 and chart_selection1.selection.points:
+        clicked_name = chart_selection1.selection.points[0]["customdata"][0]
+        st.session_state.selected_player = clicked_name
+        st.session_state.jump_to_player = True
+        st.rerun()
+    if chart_selection2 and chart_selection2.selection.points:
+        clicked_name = chart_selection2.selection.points[0]["customdata"][0]
         st.session_state.selected_player = clicked_name
         st.session_state.jump_to_player = True
         st.rerun()
@@ -384,6 +422,8 @@ if mode == "League":
         season_df
     )
 
+    st.markdown("<p style='margin-bottom: -5px;'><strong>Regular Season</strong></p>", unsafe_allow_html=True)
+    st.caption("Click ▢ to view player profile")
     display_df = season_df[league_cols].reset_index(drop=True)
 
     selection = st.dataframe(
@@ -419,9 +459,11 @@ if mode == "Player":
     d = df[(df["Name"] == player) & (df["Year"].isin(years))].copy()
     d = d.sort_values("Year")
 
-    # Get Team26 and Pos26 from player's data (use first non-null value)
-    team26 = d["Team26"].dropna().iloc[0] if d["Team26"].notna().any() else None
-    pos26 = d["Pos26"].dropna().iloc[0] if d["Pos26"].notna().any() else None
+    # Get Team26 and Pos26 from player's data (use last non-null value)
+    team26 = d["Team26"].dropna().iloc[-1] if d["Team26"].notna().any() else None
+    pos26 = d["Pos26"].dropna().iloc[-1] if d["Pos26"].notna().any() else None
+    hand = d["Hand"].dropna().iloc[-1] if d["Hand"].notna().any() else None
+    age = d["Age"].dropna().iloc[-1] if d["Age"].notna().any() else None
 
     d["AW"] = d["AW"].astype(float)
     mask = d["Year"] == 2020
@@ -430,12 +472,16 @@ if mode == "Player":
     # --- Sparklines
 
     st.subheader(player)
-    if team26 and pos26:
-        st.markdown(f"<p style='margin-top: -1rem;'><strong>{team26} ({pos26})</strong></p>", unsafe_allow_html=True)
-    elif team26:
-        st.markdown(f"<p style='margin-top: -1rem;'>{team26}</p>", unsafe_allow_html=True)
-    elif pos26:
-        st.markdown(f"<p style='margin-top: -1rem;'>({pos26})</p>", unsafe_allow_html=True)
+    st.markdown(f"<p>Tm: {team26}\u00a0\u00a0\u00a0|\u00a0\u00a0\u00a0Pos: {pos26}\u00a0\u00a0\u00a0|\u00a0\u00a0\u00a0Age: {age}\u00a0\u00a0\u00a0|\u00a0\u00a0\u00a0Bats: {hand}</p>", unsafe_allow_html=True)
+
+#    st.markdown(f"<h3>{player}</h3>", unsafe_allow_html=True)
+#    st.caption(f":material/calendar_today: {age}\u00a0\u00a0\u00a0\u00a0:material/back_hand: {hand}\u00a0\u00a0\u00a0\u00a0:material/people: {team26}\u00a0\u00a0\u00a0\u00a0:material/sports_baseball: {pos26}")
+#    if team26 and pos26:
+#        st.markdown(f"<p style='margin-top: -1rem;'><strong>{team26} ({pos26})</strong></p>", unsafe_allow_html=True)
+#    elif team26:
+#        st.markdown(f"<p style='margin-top: -1rem;'>{team26}</p>", unsafe_allow_html=True)
+#    elif pos26:
+#        st.markdown(f"<p style='margin-top: -1rem;'>({pos26})</p>", unsafe_allow_html=True)
 
     key_metrics = [m for m in ["AW", "PAAW", "SAW", "PAS"] if m in d.columns]
 
