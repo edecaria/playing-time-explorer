@@ -93,13 +93,16 @@ def load_data():
             used_parquet = False
 
     if not used_parquet:
-        # 2) Local CSV
-        if os.path.exists("mlb-playing-time.csv"):
-            path = "mlb-playing-time.csv"
-            df = pl.read_csv(path)
+        # 2) Local parquet (repo root)
+        local_parquet = "batting_season_all.parquet"
+        if os.path.exists(local_parquet):
+            df = pl.read_parquet(local_parquet)
+            used_parquet = True
         else:
-            # 3) Sample CSV fallback
-            df = pl.read_csv("mlb-playing-time-sample.csv")
+            raise FileNotFoundError(
+                "No parquet source found. Set AppDataURL in secrets or add "
+                "batting_season_all.parquet to the repo root."
+            )
 
     if used_parquet:
         # Normalize Parquet schema to the app's existing column names.
@@ -145,8 +148,8 @@ def load_data():
         if "Pos26" not in df.columns and "Primary" in df.columns:
             df = df.with_columns(pl.col("Primary").alias("Pos26"))
 
-        if "IDfg" not in df.columns and "MLBAMId" in df.columns:
-            df = df.with_columns(pl.col("MLBAMId").alias("IDfg"))
+#        if "IDfg" not in df.columns and "MLBAMId" in df.columns:
+#            df = df.with_columns(pl.col("MLBAMId").alias("IDfg"))
 
     if "is_split" in df.columns:
         df = df.with_columns(pl.col("is_split").cast(pl.Int64, strict=False).fill_null(0).alias("IsSplit"))
@@ -173,7 +176,6 @@ def load_data():
     return df
 
 df = load_data()
-st.write("Columns:", df.columns)
 df_regular = df.filter(pl.col("IsSplit") == 0) if "IsSplit" in df.columns else df
 
 # Define parameters
@@ -210,6 +212,18 @@ def is_numeric_dtype(dtype: pl.DataType) -> bool:
         pl.Int8, pl.Int16, pl.Int32, pl.Int64, pl.UInt8, pl.UInt16, pl.UInt32, pl.UInt64,
         pl.Float32, pl.Float64,
     ]
+
+def filter_non_pitchers(frame: pl.DataFrame) -> pl.DataFrame:
+    """Return frame filtered to non-pitchers based on position columns."""
+    if "Primary" not in frame.columns:
+        return frame
+
+    primary = pl.col("Primary").fill_null("").cast(pl.Utf8, strict=False).str.to_uppercase()
+    # Treat any Primary that includes P / SP / RP or equals numeric 1 as pitcher
+    non_pitcher = (
+        (primary != "")
+    )
+    return frame.filter(non_pitcher)
 
 def tier_for(metric: str, value: float):
     cfg = BENCHMARKS.get(metric)
@@ -464,7 +478,8 @@ if mode == "League":
                         continue
 
     # Apply all filters
-    season_df = df_regular.filter(
+    base_df = df if team != "All" else df_regular
+    season_df = base_df.filter(
         (pl.col("Year") == season)
         & (pl.lit(team == "All") | (pl.col("Tm") == team))
         & (pl.lit(pos == "All") | pl.col("Eligible").fill_null("").cast(pl.Utf8).str.contains(pos, literal=True))
@@ -472,60 +487,70 @@ if mode == "League":
         & (pl.lit(pos26 == "All") | pl.col("Pos26").fill_null("").cast(pl.Utf8).str.contains(pos26, literal=True))
     )
 
+    # Remove rows without a primary position
+    if "Primary" in season_df.columns:
+        season_df = season_df.filter(
+            pl.col("Primary").is_not_null()
+            & (pl.col("Primary").cast(pl.Utf8).str.strip_chars() != "")
+        )
+
     # Apply metric range filters
     for m, (lo, hi) in metric_ranges.items():
         season_df = season_df.filter(pl.col(m).is_not_null() & pl.col(m).is_between(lo, hi, closed="both"))
 
-    st.caption(f"Players matching filters: {season_df.height}")
+    # st.caption(f"Players matching filters: {season_df.height}")
 
-    # Charts side by side
-    chart_col1, chart_col2 = st.columns(2)
-    chart_aw = season_df.get_column("AW").to_list() if "AW" in season_df.columns else []
-    chart_paaw = season_df.get_column("PAAW").to_list() if "PAAW" in season_df.columns else []
-    chart_gsvl = season_df.get_column("GSvL_pct").to_list() if "GSvL_pct" in season_df.columns else []
-    chart_gsvr = season_df.get_column("GSvR_pct").to_list() if "GSvR_pct" in season_df.columns else []
-    chart_name = season_df.get_column("Name").to_list() if "Name" in season_df.columns else []
-    chart_custom = [[n] for n in chart_name]
+    # Charts (collapsed by default)
+    with st.expander("Charts", icon=":material/monitoring:", expanded=False):
+        with st.container():
+            chart_df = filter_non_pitchers(season_df)
+            chart_col1, chart_col2 = st.columns(2)
+            chart_aw = chart_df.get_column("AW").to_list() if "AW" in chart_df.columns else []
+            chart_paaw = chart_df.get_column("PAAW").to_list() if "PAAW" in chart_df.columns else []
+            chart_gsvl = chart_df.get_column("GSvL_pct").to_list() if "GSvL_pct" in chart_df.columns else []
+            chart_gsvr = chart_df.get_column("GSvR_pct").to_list() if "GSvR_pct" in chart_df.columns else []
+            chart_name = chart_df.get_column("Name").to_list() if "Name" in chart_df.columns else []
+            chart_custom = [[n] for n in chart_name]
 
-    with chart_col1:
-        st.markdown("<p style='margin-bottom: -5px;'><strong>Active Weeks vs. PA per Active Week</strong></p>", unsafe_allow_html=True)
-        fig1 = go.Figure(
-            go.Scatter(
-                x=chart_aw,
-                y=chart_paaw,
-                mode="markers",
-                marker=dict(color="#27245C"),
-                customdata=chart_custom,
-                text=chart_name,
-                hovertemplate="<b>%{text}</b><br>AW: %{x}<br>PAAW: %{y}<extra></extra>",
-            )
-        )
-        fig1.update_layout(
-            xaxis_title="Active Weeks (AW)",
-            yaxis_title="Plate Appearances per Active Week (PAAW)",
-            margin=dict(l=10, r=10, t=10, b=10),
-        )
-        chart_selection1 = st.plotly_chart(fig1, on_select="rerun", selection_mode="points")
+            with chart_col1:
+                st.markdown("<p style='margin-bottom: -5px;'><strong>Active Weeks vs. PA per Active Week</strong></p>", unsafe_allow_html=True)
+                fig1 = go.Figure(
+                    go.Scatter(
+                        x=chart_aw,
+                        y=chart_paaw,
+                        mode="markers",
+                        marker=dict(color="#27245C"),
+                        customdata=chart_custom,
+                        text=chart_name,
+                        hovertemplate="<b>%{text}</b><br>AW: %{x}<br>PAAW: %{y}<extra></extra>",
+                    )
+                )
+                fig1.update_layout(
+                    xaxis_title="Active Weeks (AW)",
+                    yaxis_title="Plate Appearances per Active Week (PAAW)",
+                    margin=dict(l=10, r=10, t=10, b=10),
+                )
+                chart_selection1 = st.plotly_chart(fig1, on_select="rerun", selection_mode="points")
 
-    with chart_col2:
-        st.markdown("<p style='margin-bottom: -5px;'><strong>Team Games Started vs. RHP and LHP</strong></p>", unsafe_allow_html=True)
-        fig2 = go.Figure(
-            go.Scatter(
-                x=chart_gsvl,
-                y=chart_gsvr,
-                mode="markers",
-                marker=dict(color="#27245C"),
-                customdata=chart_custom,
-                text=chart_name,
-                hovertemplate="<b>%{text}</b><br>%vL: %{x}<br>%vR: %{y}<extra></extra>",
-            )
-        )
-        fig2.update_layout(
-            xaxis_title="%vL",
-            yaxis_title="%vR",
-            margin=dict(l=10, r=10, t=10, b=10),
-        )
-        chart_selection2 = st.plotly_chart(fig2, on_select="rerun", selection_mode="points")
+            with chart_col2:
+                st.markdown("<p style='margin-bottom: -5px;'><strong>Team Games Started vs. RHP and LHP</strong></p>", unsafe_allow_html=True)
+                fig2 = go.Figure(
+                    go.Scatter(
+                        x=chart_gsvl,
+                        y=chart_gsvr,
+                        mode="markers",
+                        marker=dict(color="#27245C"),
+                        customdata=chart_custom,
+                        text=chart_name,
+                        hovertemplate="<b>%{text}</b><br>%vL: %{x}<br>%vR: %{y}<extra></extra>",
+                    )
+                )
+                fig2.update_layout(
+                    xaxis_title="%vL",
+                    yaxis_title="%vR",
+                    margin=dict(l=10, r=10, t=10, b=10),
+                )
+                chart_selection2 = st.plotly_chart(fig2, on_select="rerun", selection_mode="points")
 
     # Handle chart click - jump to Player view
     if chart_selection1 and chart_selection1.selection.points:
@@ -549,31 +574,62 @@ if mode == "League":
     )
 
     st.markdown("<p style='margin-bottom: -5px;'><strong>Regular Season</strong></p>", unsafe_allow_html=True)
-    st.caption("Click ▢ to view player profile")
-    display_df = season_df.filter(
-        pl.col("Primary").is_not_null() & (pl.col("Primary").cast(pl.Utf8).str.strip_chars() != "")
-    ).select(league_cols)
+    st.caption(f"{season_df.height} matching players. Click ▢ to view player profile.")
 
-    selection = st.dataframe(
-        display_df,
-        height=600,
-        on_select="rerun",
-        selection_mode="single-row",
-        column_config=column_formats,
-        hide_index=True,
+    table_df = season_df.filter(
+        pl.col("Primary").is_not_null() & (pl.col("Primary").cast(pl.Utf8).str.strip_chars() != "")
     )
+    if "PAAW" in table_df.columns:
+        table_df = table_df.sort("PAAW", descending=True)
+
+    show_splits = team != "All" and "IsSplit" in table_df.columns
+    if show_splits:
+        table_pd = table_df.to_pandas()
+        split_mask = table_pd["IsSplit"].fillna(0).astype(int).reset_index(drop=True) == 1
+        display_pd = table_pd[league_cols].reset_index(drop=True)
+        styler = display_pd.style.apply(
+            lambda row: ["background-color: #f6f6f6;" if split_mask.iloc[row.name] else "" for _ in row],
+            axis=1,
+        )
+        selection = st.dataframe(
+            styler,
+            height=600,
+            on_select="rerun",
+            selection_mode="single-row",
+            column_config=column_formats,
+            hide_index=True,
+        )
+    else:
+        display_df = table_df.select(league_cols)
+        selection = st.dataframe(
+            display_df,
+            height=600,
+            on_select="rerun",
+            selection_mode="single-row",
+            column_config=column_formats,
+            hide_index=True,
+        )
 
     # Handle row selection - jump to Player view
     if selection and selection.selection.rows:
         selected_idx = selection.selection.rows[0]
-        selected_name = display_df.row(selected_idx, named=True)["Name"]
+        if show_splits:
+            selected_name = display_pd.iloc[selected_idx]["Name"]
+        else:
+            selected_name = display_df.row(selected_idx, named=True)["Name"]
         st.session_state.selected_player = selected_name
         st.session_state.jump_to_player = True
         st.rerun()
 
 
 if mode == "Player":
-    names = sorted_unique_non_null(df_regular, "Name")
+    player_pool = df_regular
+    if "Primary" in df_regular.columns:
+        player_pool = df_regular.filter(
+            pl.col("Primary").is_not_null()
+            & (pl.col("Primary").cast(pl.Utf8).str.strip_chars() != "")
+        )
+    names = sorted_unique_non_null(player_pool, "Name")
     # Use selected player from League view if available, otherwise default
     if st.session_state.selected_player and st.session_state.selected_player in names:
         default_name = st.session_state.selected_player
@@ -657,10 +713,11 @@ if mode == "Player":
                         fig = sparkline(d2.get_column(m).to_list(), x=years, y_range=y_range)
                         st.plotly_chart(fig, config={"displayModeBar": False})
 
-    toggle_label = "Hide partial seasons" if st.session_state.show_partial_seasons else "Show partial seasons"
-    if st.button(toggle_label, type="tertiary", key="toggle_partial_seasons"):
-        st.session_state.show_partial_seasons = not st.session_state.show_partial_seasons
-        st.rerun()
+    st.toggle(
+        "Show partial seasons",
+        value=st.session_state.show_partial_seasons,
+        key="show_partial_seasons",
+    )
 
     d_tables = d
     if st.session_state.show_partial_seasons and "IsSplit" in d_all.columns:
@@ -670,25 +727,56 @@ if mode == "Player":
             d_partial = d_partial.with_columns(pl.lit(1).alias("_row_order"))
             d_tables = pl.concat([d_rollup, d_partial], how="diagonal_relaxed").sort(["Year", "_row_order", "Tm"]).drop("_row_order")
 
+    use_split_styles = st.session_state.show_partial_seasons and "IsSplit" in d_tables.columns
+    if use_split_styles:
+        d_tables_pd = d_tables.to_pandas()
+        split_mask = d_tables_pd["IsSplit"].fillna(0).astype(int).reset_index(drop=True) == 1
+
     # --- Building Blocks
     st.markdown("**Building Blocks**")
     cols = keep_existing(["Age", "Tm", "Total PA", "AW", "PAAW", "SAW", "PAS", "EAW"], d_tables)
-    st.dataframe(
-        d_tables.select(["Year"] + cols),
-        column_config=column_formats,
-        hide_index=True,
-        height=full_table_height(d_tables.height),
-    )
+    if use_split_styles:
+        display_df = d_tables_pd[["Year"] + cols].reset_index(drop=True)
+        styler = display_df.style.apply(
+            lambda row: ["background-color: #f6f6f6;" if split_mask.iloc[row.name] else "" for _ in row],
+            axis=1,
+        )
+        st.dataframe(
+            styler,
+            column_config=column_formats,
+            hide_index=True,
+            height=full_table_height(len(display_df)),
+        )
+    else:
+        st.dataframe(
+            d_tables.select(["Year"] + cols),
+            column_config=column_formats,
+            hide_index=True,
+            height=full_table_height(d_tables.height),
+        )
 
     # --- Handedness Splits
     st.markdown("**Handedness Splits**")
     cols = keep_existing(["Age", "Tm", "GSvR_pct", "GSvL_pct", "vR", "vL", "#R", "#L"], d_tables)
-    st.dataframe(
-        d_tables.select(["Year"] + cols),
-        column_config=column_formats,
-        hide_index=True,
-        height=full_table_height(d_tables.height),
-    )
+    if use_split_styles:
+        display_df = d_tables_pd[["Year"] + cols].reset_index(drop=True)
+        styler = display_df.style.apply(
+            lambda row: ["background-color: #f6f6f6;" if split_mask.iloc[row.name] else "" for _ in row],
+            axis=1,
+        )
+        st.dataframe(
+            styler,
+            column_config=column_formats,
+            hide_index=True,
+            height=full_table_height(len(display_df)),
+        )
+    else:
+        st.dataframe(
+            d_tables.select(["Year"] + cols),
+            column_config=column_formats,
+            hide_index=True,
+            height=full_table_height(d_tables.height),
+        )
 #    with tab3:
 #        cols = keep_existing(["AB/AW", "H/AW", "R/AW", "HR/AW", "RBI/AW", "SB/AW"], d)
 #        st.dataframe(d[["Year"] + cols], column_config=column_formats)
