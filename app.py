@@ -173,6 +173,7 @@ def load_data():
     return df
 
 df = load_data()
+st.write("Columns:", df.columns)
 df_regular = df.filter(pl.col("IsSplit") == 0) if "IsSplit" in df.columns else df
 
 # Define parameters
