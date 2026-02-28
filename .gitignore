@@ -19,6 +19,7 @@ Thumbs.db
 mlb-playing-time-all-fields.csv
 mlb-playing-time.csv
 batting_season_all.parquet
+batting_season_all_old.parquet
 
 # Code
 scratch_load_parquet.py

@@ -24,6 +24,14 @@ st.markdown(
     h3 {
         padding-bottom: 0 !important;
     }
+    div[data-testid="stDataFrameToolbar"],
+    div[data-testid="stDataFrameToolbar"] * ,
+    button[data-testid="stDataFrameToolbarButton"],
+    div[data-testid="stElementToolbar"] {
+        display: none !important;
+        visibility: hidden !important;
+        pointer-events: none !important;
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -58,23 +66,39 @@ BENCHMARKS = {
     }}
 
 column_formats = {
+    "Name": st.column_config.TextColumn(width=160),
+    "Tm": st.column_config.TextColumn(width=40),
+    "Team26": st.column_config.TextColumn(width=40),
+    "Pos26": st.column_config.TextColumn(width=40),
+    "Hand": st.column_config.TextColumn(width=40),
+    "Bat": st.column_config.TextColumn(width=35),
+    "Primary": st.column_config.TextColumn(width=40),
+    "Pos": st.column_config.TextColumn(width=40),
+    "Eligible": st.column_config.TextColumn(width=40),
+    "Elig": st.column_config.TextColumn(width=40),
+    "IDfg": st.column_config.NumberColumn(format="%d", width=80),
+    "Year": st.column_config.NumberColumn(format="%d", width=45),
     "Total PA": st.column_config.NumberColumn(format="%d"),
-    "Age": st.column_config.NumberColumn(format="%d"),
-    "AW": st.column_config.NumberColumn(format="%d"),
-    "PAAW": st.column_config.NumberColumn(format="%.1f"),
-    "SAW": st.column_config.NumberColumn(format="%.1f"),
-    "PAS": st.column_config.NumberColumn(format="%.2f"),
-    "EAW": st.column_config.NumberColumn(format="%.1f"),
-    "GSvR_pct": st.column_config.NumberColumn(label="%vR", format="%.0f%%"),
-    "GSvL_pct": st.column_config.NumberColumn(label="%vL", format="%.0f%%"),
-    "vR": st.column_config.NumberColumn(format="%.2f"),
-    "vL": st.column_config.NumberColumn(format="%.2f"),
-    "#R": st.column_config.NumberColumn(format="%d"),
-    "#L": st.column_config.NumberColumn(format="%d"),
-    "wOBA": st.column_config.NumberColumn(format="%.3f"),
-    "wTMx+": st.column_config.NumberColumn(format="%d"),
-    "wTMx+ vR": st.column_config.NumberColumn(format="%d"),
-    "wTMx+ vL": st.column_config.NumberColumn(format="%d"),
+    "PA": st.column_config.NumberColumn(format="%d",width=40),
+    "Age": st.column_config.NumberColumn(format="%d", width=35),
+    "AW": st.column_config.NumberColumn(format="%d", width=35),
+    "PAAW": st.column_config.NumberColumn(format="%.1f", width=50),
+    "SAW": st.column_config.NumberColumn(format="%.1f", width=40),
+    "PAS": st.column_config.NumberColumn(format="%.2f", width=40),
+    "EAW": st.column_config.NumberColumn(format="%.1f", width=40),
+    "GSvR_pct": st.column_config.NumberColumn(label="%vR", format="%.0f%%",width=45),
+    "GSvL_pct": st.column_config.NumberColumn(label="%vL", format="%.0f%%", width=45),
+    "vR": st.column_config.NumberColumn(format="%.2f",width=40),
+    "vL": st.column_config.NumberColumn(format="%.2f",width=40),
+    "#R": st.column_config.NumberColumn(format="%d", width=30),
+    "#L": st.column_config.NumberColumn(format="%d", width=30),
+    "wOBA": st.column_config.NumberColumn(format="%.3f",width=50),
+    "wOBA vR": st.column_config.NumberColumn(format="%.3f",width=60),
+    "wOBA vL": st.column_config.NumberColumn(format="%.3f",width=60),
+    "wTMx+": st.column_config.NumberColumn(format="%d",width=50),
+    "wTmX+": st.column_config.NumberColumn(format="%d",width=50),
+    "wTmX+R": st.column_config.NumberColumn(format="%d",width=70),
+    "wTmX+L": st.column_config.NumberColumn(format="%d",width=70),
 }
 
 # --- Load data
@@ -127,9 +151,11 @@ def load_data():
             "lineup_slot_mode_r": "#R",
             "lineup_slot_mode_l": "#L",
             "woba": "wOBA",
-            "wtmx_plus": "wTMx+",
-            "wtmx_plus_rhp": "wTMx+ vR",
-            "wtmx_plus_lhp": "wTMx+ vL",
+            "woba_rhp": "wOBA vR",
+            "woba_lhp": "wOBA vL",
+            "wtmx_plus": "wTmX+",
+            "wtmx_plus_rhp": "wTmX+R",
+            "wtmx_plus_lhp": "wTmX+L",
         }
         df = df.rename({k: v for k, v in rename_map.items() if k in df.columns})
 
@@ -158,9 +184,9 @@ def load_data():
 
     # Normalize types (runs no matter which source was used)
     numeric_casts = []
-    for col in ["GSvR", "GSvL", "vR", "vL", "#R", "#L", "AW", "PAAW", "SAW", "PAS", "EAW", "Age", "Total PA", "Year", "wOBA", "wTMx+", "wTMx+ vR", "wTMx+ vL"]:
+    for col in ["GSvR", "GSvL", "vR", "vL", "#R", "#L", "AW", "PAAW", "SAW", "PAS", "EAW", "Age", "Total PA", "Year", "wOBA", "wTmX+", "wTmX+R", "wTmX+L"]:
         if col in df.columns:
-            target = pl.Int64 if col in ["#R", "#L", "Age", "Total PA", "Year", "wTMx+", "wTMx+ vR", "wTMx+ vL"] else pl.Float64
+            target = pl.Int64 if col in ["#R", "#L", "Age", "Total PA", "Year", "wTmX+", "wTmX+R", "wTmX+L"] else pl.Float64
             numeric_casts.append(pl.col(col).cast(target, strict=False).alias(col))
     if numeric_casts:
         df = df.with_columns(numeric_casts)
@@ -203,6 +229,18 @@ def col_last_non_null(frame: pl.DataFrame, col: str):
         return None
     s = frame.get_column(col).drop_nulls()
     return s[-1] if len(s) > 0 else None
+
+def compute_age_for_year(frame: pl.DataFrame, target_year: int) -> int | None:
+    if not {"Year", "Age"}.issubset(frame.columns):
+        return None
+    tmp = frame.select(["Year", "Age"]).drop_nulls()
+    if tmp.height == 0:
+        return None
+    tmp = tmp.sort("Year")
+    year, age = tmp.row(-1)
+    if year is None or age is None:
+        return None
+    return int(age + (target_year - int(year)))
 
 def is_integer_dtype(dtype: pl.DataType) -> bool:
     return dtype in [pl.Int8, pl.Int16, pl.Int32, pl.Int64, pl.UInt8, pl.UInt16, pl.UInt32, pl.UInt64]
@@ -307,7 +345,7 @@ if "jump_to_player" not in st.session_state:
 # Initialize filter session states (so they persist across tab switches)
 if "filter_season" not in st.session_state:
     season_values = sorted_unique_non_null(df_regular, "Year")
-    st.session_state.filter_season = season_values[-1] if season_values else None
+    st.session_state.filter_season = max(season_values) if season_values else None
 if "filter_team" not in st.session_state:
     st.session_state.filter_team = "All"
 if "filter_team26" not in st.session_state:
@@ -361,7 +399,8 @@ if scroll_to_top:
 
 if mode == "League":
     years_list = sorted_unique_non_null(df_regular, "Year")
-    season_idx = years_list.index(st.session_state.filter_season) if st.session_state.filter_season in years_list else len(years_list) - 1
+    years_list = sorted(years_list, reverse=True)
+    season_idx = years_list.index(st.session_state.filter_season) if st.session_state.filter_season in years_list else 0
     season = st.selectbox("Season", years_list, index=season_idx)
     st.session_state.filter_season = season
 
@@ -390,7 +429,11 @@ if mode == "League":
 
     with st.expander("Filters", icon=":material/filter_list:"):
         # Team filters
-        team_options = ["All"] + sorted_unique_non_null(df_regular, "Tm")
+        team_values = [
+            t for t in sorted_unique_non_null(df_regular, "Tm")
+            if not (isinstance(t, str) and len(t) == 3 and t[0].isdigit() and t[1:].upper() == "TM")
+        ]
+        team_options = ["All"] + team_values
         team26_options = ["All"] + sorted_unique_non_null(df_regular, "Team26")
         pos_options = ["All", "2", "3", "4", "5", "6", "o", "0"]
         pos26_options = ["All", "C", "1B", "2B", "3B", "SS", "OF", "UT"]
@@ -534,21 +577,51 @@ if mode == "League":
 
             with chart_col2:
                 st.markdown("<p style='margin-bottom: -5px;'><strong>Team Games Started vs. RHP and LHP</strong></p>", unsafe_allow_html=True)
+                total_gs = []
+                platoon_split = []
+                if {"starts_r", "starts_l", "elig_r", "elig_l", "GSvR", "GSvL"}.issubset(chart_df.columns):
+                    total_col = (
+                        (pl.col("starts_r") + pl.col("starts_l"))
+                        / (pl.col("elig_r") + pl.col("elig_l"))
+                    )
+                    split_col = pl.col("GSvR") - pl.col("GSvL")
+                    chart_calc = chart_df.with_columns(
+                        pl.when((pl.col("elig_r") + pl.col("elig_l")) > 0)
+                        .then(total_col)
+                        .otherwise(None)
+                        .alias("total_gs_pct"),
+                        split_col.alias("platoon_split_gs"),
+                    )
+                    total_gs = chart_calc.get_column("total_gs_pct").to_list()
+                    platoon_split = chart_calc.get_column("platoon_split_gs").to_list()
+
                 fig2 = go.Figure(
                     go.Scatter(
-                        x=chart_gsvl,
-                        y=chart_gsvr,
+                        x=platoon_split,
+                        y=total_gs,
                         mode="markers",
                         marker=dict(color="#27245C"),
                         customdata=chart_custom,
                         text=chart_name,
-                        hovertemplate="<b>%{text}</b><br>%vL: %{x}<br>%vR: %{y}<extra></extra>",
+                        hovertemplate="<b>%{text}</b><br>Platoon Split GS%: %{x}<br>Total % GS: %{y}<extra></extra>",
                     )
                 )
                 fig2.update_layout(
-                    xaxis_title="%vL",
-                    yaxis_title="%vR",
+                    xaxis_title="Platoon Split GS% (R - L)",
+                    yaxis_title="Total % GS",
                     margin=dict(l=10, r=10, t=10, b=10),
+                    shapes=[
+                        dict(
+                            type="line",
+                            x0=0,
+                            x1=0,
+                            y0=0,
+                            y1=1,
+                            xref="x",
+                            yref="paper",
+                            line=dict(color="#999999", width=1, dash="dot"),
+                        )
+                    ],
                 )
                 chart_selection2 = st.plotly_chart(fig2, on_select="rerun", selection_mode="points")
 
@@ -568,12 +641,11 @@ if mode == "League":
         ["Year", "IDfg", "Name", "Age", "Hand", "Tm", "Primary", "Eligible",
          "Total PA", "AW", "PAAW", "SAW", "PAS", "EAW",
          "GSvR_pct", "GSvL_pct", "vR", "vL", "#R", "#L",
-         "wOBA", "wTMx+", "wTMx+ vR", "wTMx+ vL",
-         "Team26", "Pos26"],
+         "wOBA", "wTmX+", "wTmX+R", "wTmX+L"],
         season_df
     )
 
-    st.markdown("<p style='margin-bottom: -5px;'><strong>Regular Season</strong></p>", unsafe_allow_html=True)
+    # st.markdown("<p style='margin-bottom: -5px;'><strong>Regular Season</strong></p>", unsafe_allow_html=True)
     st.caption(f"{season_df.height} matching players. Click ▢ to view player profile.")
 
     table_df = season_df.filter(
@@ -583,10 +655,17 @@ if mode == "League":
         table_df = table_df.sort("PAAW", descending=True)
 
     show_splits = team != "All" and "IsSplit" in table_df.columns
+    display_rename = {
+        "Hand": "Bat",
+        "Primary": "Pos",
+        "Eligible": "Elig",
+        "Total PA": "PA",
+    }
+
     if show_splits:
         table_pd = table_df.to_pandas()
         split_mask = table_pd["IsSplit"].fillna(0).astype(int).reset_index(drop=True) == 1
-        display_pd = table_pd[league_cols].reset_index(drop=True)
+        display_pd = table_pd[league_cols].rename(columns=display_rename).reset_index(drop=True)
         styler = display_pd.style.apply(
             lambda row: ["background-color: #f6f6f6;" if split_mask.iloc[row.name] else "" for _ in row],
             axis=1,
@@ -600,7 +679,7 @@ if mode == "League":
             hide_index=True,
         )
     else:
-        display_df = table_df.select(league_cols)
+        display_df = table_df.select(league_cols).rename(display_rename)
         selection = st.dataframe(
             display_df,
             height=600,
@@ -644,10 +723,11 @@ if mode == "Player":
     d_all = df.filter((pl.col("Name") == player) & (pl.col("Year").is_in(years))).sort("Year")
 
     # Get Team26 and Pos26 from player's data (use last non-null value)
-    team26 = col_last_non_null(d, "Team26")
+    team26 = col_last_non_null(d, "Team26") or col_last_non_null(d_all, "Team26") or col_last_non_null(d, "Tm")
     pos26 = col_last_non_null(d, "Pos26")
     hand = col_last_non_null(d, "Hand")
     age = col_last_non_null(d, "Age")
+    age_2026 = compute_age_for_year(d, 2026)
 
     if "AW" in d.columns:
         d = d.with_columns(
@@ -660,7 +740,8 @@ if mode == "Player":
     # --- Sparklines
 
     st.subheader(player)
-    st.markdown(f"<p>Tm: {team26}\u00a0\u00a0\u00a0|\u00a0\u00a0\u00a0Pos: {pos26}\u00a0\u00a0\u00a0|\u00a0\u00a0\u00a0Age: {age+1}\u00a0\u00a0\u00a0|\u00a0\u00a0\u00a0Bats: {hand}</p>", unsafe_allow_html=True)
+    display_age = age_2026 if age_2026 is not None else age
+    st.markdown(f"<p>Tm: {team26}\u00a0\u00a0\u00a0|\u00a0\u00a0\u00a0Pos: {pos26}\u00a0\u00a0\u00a0|\u00a0\u00a0\u00a0Age: {display_age}\u00a0\u00a0\u00a0|\u00a0\u00a0\u00a0Bats: {hand}</p>", unsafe_allow_html=True)
 
 #    st.markdown(f"<h3>{player}</h3>", unsafe_allow_html=True)
 #    st.caption(f":material/calendar_today: {age}\u00a0\u00a0\u00a0\u00a0:material/back_hand: {hand}\u00a0\u00a0\u00a0\u00a0:material/people: {team26}\u00a0\u00a0\u00a0\u00a0:material/sports_baseball: {pos26}")
@@ -725,7 +806,66 @@ if mode == "Player":
         if d_partial.height > 0:
             d_rollup = d.with_columns(pl.lit(0).alias("_row_order"))
             d_partial = d_partial.with_columns(pl.lit(1).alias("_row_order"))
-            d_tables = pl.concat([d_rollup, d_partial], how="diagonal_relaxed").sort(["Year", "_row_order", "Tm"]).drop("_row_order")
+            sort_cols = ["Year", "_row_order"]
+            if "team_seq" in d_all.columns:
+                sort_cols.append("team_seq")
+            sort_cols.append("Tm")
+            d_tables = pl.concat([d_rollup, d_partial], how="diagonal_relaxed").sort(sort_cols)
+
+    # Projection row for 2026 (placeholder formula)
+    # Commented out per request.
+    # proj_year = 2026
+    # proj_params = {
+    #     "AW": {"base": 27.0, "w2025": 1.0, "w2024": 1.0, "wbase": 4.0},
+    #     "PAAW": {"base": 22.0, "w2025": 4.0, "w2024": 1.0, "wbase": 0.0},
+    #     "SAW": {"base": 4.9, "w2025": 4.0, "w2024": 1.0, "wbase": 0.0},
+    #     "PAS": {"base": 4.2, "w2025": 4.0, "w2024": 1.0, "wbase": 1.0},
+    # }
+    # 
+    # def value_for_year(frame: pl.DataFrame, year: int, col: str) -> float | None:
+    #     if col not in frame.columns or "Year" not in frame.columns:
+    #         return None
+    #     sub = frame.filter(pl.col("Year") == year)
+    #     if sub.height == 0:
+    #         return None
+    #     v = sub.get_column(col).drop_nulls()
+    #     return float(v[0]) if len(v) > 0 else None
+    #
+    # proj_row = {"Year": proj_year, "Tm": team26, "Team26": team26, "Age": age_2026}
+    # has_2025 = False
+    # for stat, params in proj_params.items():
+    #     base = params["base"]
+    #     w2025 = params["w2025"]
+    #     w2024 = params["w2024"]
+    #     wbase = params["wbase"]
+    #     denom = w2025 + w2024 + wbase
+    #
+    #     v2025 = value_for_year(d, 2025, stat)
+    #     if v2025 is None:
+    #         continue
+    #     has_2025 = True
+    #     v2024 = value_for_year(d, 2024, stat)
+    #     if v2024 is None:
+    #         v2024 = base
+    #     if age_2026 is None:
+    #         proj_val = None
+    #     else:
+    #         proj_val = ((w2025 * v2025 + w2024 * v2024 + wbase * base) / denom) * (1+ (27 - age_2026) * 0.00) # no age adjustment for now
+    #     proj_row[stat] = proj_val
+    #
+    # if "AW" in proj_row and "PAAW" in proj_row and proj_row["AW"] is not None and proj_row["PAAW"] is not None:
+    #     proj_row["Total PA"] = proj_row["AW"] * proj_row["PAAW"]
+    #
+    # if has_2025:
+    #     if "_row_order" in d_tables.columns:
+    #         proj_row["_row_order"] = 2
+    #         sort_cols = ["Year", "_row_order"]
+    #         if "team_seq" in d_tables.columns:
+    #             sort_cols.append("team_seq")
+    #         sort_cols.append("Tm")
+    #         d_tables = pl.concat([d_tables, pl.DataFrame([proj_row])], how="diagonal_relaxed").sort(sort_cols)
+    #     else:
+    #         d_tables = pl.concat([d_tables, pl.DataFrame([proj_row])], how="diagonal_relaxed").sort(["Year", "Tm"])
 
     use_split_styles = st.session_state.show_partial_seasons and "IsSplit" in d_tables.columns
     if use_split_styles:
@@ -738,7 +878,10 @@ if mode == "Player":
     if use_split_styles:
         display_df = d_tables_pd[["Year"] + cols].reset_index(drop=True)
         styler = display_df.style.apply(
-            lambda row: ["background-color: #f6f6f6;" if split_mask.iloc[row.name] else "" for _ in row],
+            lambda row: [
+                "background-color: #f6f6f6;" if split_mask.iloc[row.name] else ""
+                for _ in row
+            ],
             axis=1,
         )
         st.dataframe(
@@ -761,7 +904,39 @@ if mode == "Player":
     if use_split_styles:
         display_df = d_tables_pd[["Year"] + cols].reset_index(drop=True)
         styler = display_df.style.apply(
-            lambda row: ["background-color: #f6f6f6;" if split_mask.iloc[row.name] else "" for _ in row],
+            lambda row: [
+                "background-color: #f6f6f6;" if split_mask.iloc[row.name] else ""
+                for _ in row
+            ],
+            axis=1,
+        )
+        st.dataframe(
+            styler,
+            column_config=column_formats,
+            hide_index=True,
+            height=full_table_height(len(display_df)),
+        )
+    else:
+        st.dataframe(
+            d_tables.select(["Year"] + cols),
+            column_config=column_formats,
+            hide_index=True,
+            height=full_table_height(d_tables.height),
+        )
+
+    # --- Performance
+    st.markdown("**Performance**")
+    cols = keep_existing(
+        ["Age", "Tm", "wOBA", "wOBA vR", "wOBA vL", "wTmX+", "wTmX+R", "wTmX+L"],
+        d_tables,
+    )
+    if use_split_styles:
+        display_df = d_tables_pd[["Year"] + cols].reset_index(drop=True)
+        styler = display_df.style.apply(
+            lambda row: [
+                "background-color: #f6f6f6;" if split_mask.iloc[row.name] else ""
+                for _ in row
+            ],
             axis=1,
         )
         st.dataframe(
