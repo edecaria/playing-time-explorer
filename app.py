@@ -451,7 +451,7 @@ if mode == "League":
         pos_col1, pos_col2 = st.columns(2)
         with pos_col1:
             pos_idx = pos_options.index(st.session_state.filter_pos) if st.session_state.filter_pos in pos_options else 0
-            pos = st.selectbox("Position", pos_options, index=pos_idx)
+            pos = st.selectbox("Eligibility", pos_options, index=pos_idx)
             st.session_state.filter_pos = pos
         with pos_col2:
             pos26_idx = pos26_options.index(st.session_state.filter_pos26) if st.session_state.filter_pos26 in pos26_options else 0
